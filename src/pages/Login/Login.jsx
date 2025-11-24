@@ -1,17 +1,32 @@
+import "./login.css";
 import { LogIn, CreditCard } from "lucide-react";
 import { Link } from "react-router";
-import "./Login.css";
+import { useAuth } from "../../context/AuthContext.jsx";
+import { useState } from "react";
 
-export default function Login({
-  loginForm,
-  setLoginForm,
-  handleLogin,
-  error,
-  success,
-}) {
+export default function Login() {
+  const { login } = useAuth();
+
+  const [form, setForm] = useState({ username: "", password: "" });
+  const [localError, setLocalError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLocalError("");
+    setLoading(true);
+
+    const res = await login(form.username, form.password);
+
+    setLoading(false);
+
+    if (!res.ok) {
+      setLocalError(res.error);
+    }
+  };
+
   return (
     <div className="login-page">
-
       <div className="login-card">
 
         <div className="login-header">
@@ -22,20 +37,18 @@ export default function Login({
           <p className="login-subtitle">Virtual Payment Simulator</p>
         </div>
 
-        {error && <div className="alert alert-error">{error}</div>}
-        {success && <div className="alert alert-success">{success}</div>}
+        {localError && <div className="alert alert-error">{localError}</div>}
 
-        <div className="form-section">
+        <form onSubmit={handleSubmit} className="form-section">
 
           <div className="form-group">
             <label>Username</label>
             <input
               type="text"
-              value={loginForm.username}
+              value={form.username}
               onChange={(e) =>
-                setLoginForm({ ...loginForm, username: e.target.value })
+                setForm({ ...form, username: e.target.value })
               }
-              onKeyPress={(e) => e.key === "Enter" && handleLogin()}
             />
           </div>
 
@@ -43,25 +56,22 @@ export default function Login({
             <label>Password</label>
             <input
               type="password"
-              value={loginForm.password}
+              value={form.password}
               onChange={(e) =>
-                setLoginForm({ ...loginForm, password: e.target.value })
+                setForm({ ...form, password: e.target.value })
               }
-              onKeyPress={(e) => e.key === "Enter" && handleLogin()}
             />
           </div>
 
-          <button className="btn-primary" onClick={handleLogin}>
+          <button className="btn-primary" type="submit" disabled={loading}>
             <LogIn className="icon-sm" />
-            Login
+            {loading ? "Logging in..." : "Login"}
           </button>
-        </div>
+        </form>
 
         <div className="switch-section">
           <p>Don't have an account?</p>
-          <Link to="/signup" className="switch-link">
-            Create Account
-          </Link>
+          <Link to="/signup" className="switch-link">Create Account</Link>
         </div>
 
         <div className="demo-box">
@@ -71,7 +81,6 @@ export default function Login({
         </div>
 
       </div>
-
     </div>
   );
 }

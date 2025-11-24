@@ -8,194 +8,144 @@ import Send from "./pages/Send/Send.jsx";
 import HistoryPage from "./pages/History/History.jsx";
 import Profile from "./pages/Profile/Profile.jsx";
 
-export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [users, setUsers] = useState([]);
-  const [transactions, setTransactions] = useState([]);
+import { useAuth } from "./context/AuthContext.jsx";
 
-  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
-  const [signupForm, setSignupForm] = useState({
-    username: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-  });
+export default function App() {
+  const {
+    currentUser,
+    setCurrentUser,
+    token,
+    authLoading,
+    logout,
+    API_BASE,
+  } = useAuth();
+
+  const [transactions, setTransactions] = useState([]);
   const [sendForm, setSendForm] = useState({
     recipient: "",
     amount: "",
     note: "",
   });
+  const [sendError, setSendError] = useState("");
+  const [sendSuccess, setSendSuccess] = useState("");
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
+  // Load transactions if have token
   useEffect(() => {
-    setUsers([
-      {
-        id: "1",
-        username: "demo",
-        email: "demo@goonpay.com",
-        password: "demo123",
-        balance: 1500.0,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-  }, []);
-
-  const handleSignup = () => {
-    setError("");
-    setSuccess("");
-
-    if (signupForm.password !== signupForm.confirmPassword) {
-      setError("Passwords do not match");
+    if (!token) {
+      setTransactions([]);
       return;
     }
 
-    if (signupForm.password.length < 6) {
-      setError("Password must be at least 6 characters");
-      return;
-    }
+    const loadHistory = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/transactions/history`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-    if (users.find((u) => u.username === signupForm.username)) {
-      setError("Username already exists");
-      return;
-    }
+        if (!res.ok) {
+          console.error("Failed to fetch history");
+          return;
+        }
 
-    const newUser = {
-      id: Date.now().toString(),
-      username: signupForm.username,
-      email: signupForm.email,
-      password: signupForm.password,
-      balance: 1000.0,
-      createdAt: new Date().toISOString(),
+        const data = await res.json();
+        setTransactions(data);
+      } catch (err) {
+        console.error("Error fetching history:", err);
+      }
     };
 
-    setUsers([...users, newUser]);
-    setSuccess("Account created successfully! Please login.");
+    loadHistory();
+  }, [token, API_BASE]);
 
-    setSignupForm({
-      username: "",
-      email: "",
-      password: "",
-      confirmPassword: "",
-    });
-  };
+  const handleSendMoney = async () => {
+    if (!currentUser || !token) return;
 
-  const handleLogin = () => {
-    setError("");
-
-    const user = users.find(
-      (u) =>
-        u.username === loginForm.username &&
-        u.password === loginForm.password
-    );
-
-    if (!user) {
-      setError("Invalid username or password");
-      return;
-    }
-
-    setCurrentUser(user);
-    setLoginForm({ username: "", password: "" });
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setError("");
-    setSuccess("");
-  };
-
-  const handleSendMoney = () => {
-    setError("");
-    setSuccess("");
+    setSendError("");
+    setSendSuccess("");
 
     const amount = parseFloat(sendForm.amount);
     if (isNaN(amount) || amount <= 0) {
-      setError("Please enter a valid amount");
-      return;
-    }
-    if (amount > currentUser.balance) {
-      setError("Insufficient balance");
+      setSendError("Please enter a valid amount");
       return;
     }
 
-    const recipient = users.find((u) => u.username === sendForm.recipient);
-    if (!recipient) {
-      setError("Recipient not found");
-      return;
+    try
+    {
+      const res = await fetch(`${API_BASE}/api/transactions/send`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          recipient: sendForm.recipient,
+          amount,
+          note: sendForm.note,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSendError(data.error || "Failed to send money");
+        return;
+      }
+
+      setSendSuccess(data.message || "Transfer complete");
+      setSendForm({ recipient: "", amount: "", note: "" });
+
+      const historyRes = await fetch(
+        `${API_BASE}/api/transactions/history`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (historyRes.ok) {
+        const history = await historyRes.json();
+        setTransactions(history);
+      }
+
+      // refresh current user balance
+      const meRes = await fetch(`${API_BASE}/api/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (meRes.ok) {
+        const user = await meRes.json();
+        setCurrentUser(user);
+      }
+    } catch (err) {
+      console.error("Send error:", err);
+      setSendError("Something went wrong while sending");
     }
-
-    if (recipient.id === currentUser.id) {
-      setError("Cannot send money to yourself");
-      return;
-    }
-
-    const transaction = {
-      id: Date.now().toString(),
-      from: currentUser.id,
-      to: recipient.id,
-      amount: amount,
-      note: sendForm.note,
-      timestamp: new Date().toISOString(),
-      fromUsername: currentUser.username,
-      toUsername: recipient.username,
-    };
-
-    const updatedUsers = users.map((u) => {
-      if (u.id === currentUser.id)
-        return { ...u, balance: u.balance - amount };
-      if (u.id === recipient.id)
-        return { ...u, balance: u.balance + amount };
-      return u;
-    });
-
-    setUsers(updatedUsers);
-    setTransactions([transaction, ...transactions]);
-    setCurrentUser({
-      ...currentUser,
-      balance: currentUser.balance - amount,
-    });
-    setSuccess(
-      `Successfully sent $${amount.toFixed(2)} to ${recipient.username}`
-    );
-    setSendForm({ recipient: "", amount: "", note: "" });
   };
 
   const getUserTransactions = () => {
     if (!currentUser) return [];
-    return transactions.filter(
-      (t) => t.from === currentUser.id || t.to === currentUser.id
-    );
+
+    return transactions.map((t) => ({
+      id: t._id || t.id,
+      from: t.from?._id || t.from,
+      to: t.to?._id || t.to,
+      amount: t.amount,
+      note: t.note,
+      timestamp: t.timestamp,
+      fromUsername: t.from?.username || t.fromUsername,
+      toUsername: t.to?.username || t.toUsername,
+    }));
   };
+
+  if (authLoading) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <Routes>
       {!currentUser && (
         <>
-          <Route
-            path="/"
-            element={
-              <Login
-                loginForm={loginForm}
-                setLoginForm={setLoginForm}
-                handleLogin={handleLogin}
-                error={error}
-                success={success}
-              />
-            }
-          />
-          <Route
-            path="/signup"
-            element={
-              <Signup
-                signupForm={signupForm}
-                setSignupForm={setSignupForm}
-                handleSignup={handleSignup}
-                error={error}
-                success={success}
-              />
-            }
-          />
+          <Route path="/" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
           <Route path="*" element={<Navigate to="/" />} />
         </>
       )}
@@ -208,7 +158,7 @@ export default function App() {
               <Dashboard
                 currentUser={currentUser}
                 getUserTransactions={getUserTransactions}
-                handleLogout={handleLogout}
+                handleLogout={logout}
               />
             }
           />
@@ -221,9 +171,9 @@ export default function App() {
                 sendForm={sendForm}
                 setSendForm={setSendForm}
                 handleSendMoney={handleSendMoney}
-                error={error}
-                success={success}
-                handleLogout={handleLogout}
+                error={sendError}
+                success={sendSuccess}
+                handleLogout={logout}
               />
             }
           />
@@ -234,7 +184,7 @@ export default function App() {
               <HistoryPage
                 currentUser={currentUser}
                 getUserTransactions={getUserTransactions}
-                handleLogout={handleLogout}
+                handleLogout={logout}
               />
             }
           />
@@ -245,7 +195,7 @@ export default function App() {
               <Profile
                 currentUser={currentUser}
                 getUserTransactions={getUserTransactions}
-                handleLogout={handleLogout}
+                handleLogout={logout}
               />
             }
           />
